@@ -11,6 +11,8 @@ body { margin:0; background:#0b0b0f; color:#fff; font-family:Arial; }
 input { flex:1; padding:10px; border:none; border-radius:6px; }
 button { padding:10px; border:none; background:#5865f2; color:#fff; border-radius:6px; cursor:pointer; }
 #player { width:100%; aspect-ratio:16/9; }
+.queue-item { background:#1a1a24; margin:5px; padding:8px; border-radius:6px; display:flex; justify-content:space-between; }
+.msg { background:#1a1a24; padding:5px; margin:5px 0; border-radius:5px; }
 </style>
 </head>
 
@@ -25,74 +27,110 @@ button { padding:10px; border:none; background:#5865f2; color:#fff; border-radiu
 <div class="top">
   <input id="ytLink" placeholder="Link YouTube">
   <button onclick="loadMedia()">▶</button>
+  <button onclick="addQueue()">➕ Fila</button>
 </div>
 
 <div id="player"></div>
 
 <div class="top">
+  <button onclick="prevPlaylist()">⏮</button>
   <button onclick="play()">▶</button>
   <button onclick="pause()">⏸</button>
+  <button onclick="nextPlaylist()">⏭</button>
+  <button onclick="nextQueue()">⏭ Fila</button>
+</div>
+
+<h3>Fila</h3>
+<div id="queue"></div>
+
+<h3>Chat</h3>
+
+<div class="top">
+  <span id="userDisplay"></span>
+  <button onclick="changeName()">Trocar Nome</button>
+</div>
+
+<div id="messages"></div>
+
+<div class="top">
+  <input id="msgInput">
+  <button onclick="sendMsg()">Enviar</button>
 </div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
+
+// SOCKET
 const socket = io("https://multiplayerapp.onrender.com");
 
+// USER
+let username = localStorage.getItem("username") || "User"+Math.floor(Math.random()*9999);
+document.getElementById("userDisplay").innerText="👤 "+username;
+
+function changeName(){
+  const n=prompt("Novo nome:");
+  if(!n) return;
+  username=n;
+  localStorage.setItem("username",username);
+  document.getElementById("userDisplay").innerText="👤 "+username;
+}
+
+// PLAYER
 let player;
 
 function onYouTubeIframeAPIReady(){
-  player = new YT.Player("player", {
-    height: "100%",
-    width: "100%"
-  });
+  player=new YT.Player("player",{height:"100%",width:"100%"});
 }
 
-function parseYouTube(url){
-  try{
-    const u = new URL(url);
-    const v = u.searchParams.get("v");
-    if(v) return v;
-    if(u.hostname.includes("youtu.be")) return u.pathname.slice(1);
-  }catch(e){}
-  return null;
-}
-
+// CONTROLES
 function loadMedia(){
-  const id = parseYouTube(document.getElementById("ytLink").value);
-  if(!id) return alert("Link inválido");
-  socket.emit("load", id);
+  const url=document.getElementById("ytLink").value;
+  socket.emit("load",url);
 }
 
 function play(){
-  if(player) socket.emit("play");
+  socket.emit("play");
+
+  if(window.Android){
+    Android.playAudio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
+  }
 }
 
 function pause(){
-  if(player) socket.emit("pause");
+  socket.emit("pause");
+
+  if(window.Android){
+    Android.pauseAudio();
+  }
 }
 
-socket.on("load",(id)=>{
-  if(player) player.loadVideoById(id);
+// SOCKET
+socket.on("load",(url)=>{
+  if(player) player.loadVideoByUrl(url);
 });
 
-socket.on("play",()=>{
-  if(player) player.playVideo();
-});
+socket.on("play",()=> player && player.playVideo());
+socket.on("pause",()=> player && player.pauseVideo());
 
-socket.on("pause",()=>{
-  if(player) player.pauseVideo();
-});
+// ROOM
+function createRoom(){ socket.emit("create-room"); }
+function joinRoom(){ socket.emit("join-room",document.getElementById("roomInput").value); }
 
-// 🔥 ESSAS FUNÇÕES PRECISAM EXISTIR
-function createRoom(){
-  socket.emit("create-room");
+// CHAT
+function sendMsg(){
+  const msg=document.getElementById("msgInput").value;
+  socket.emit("chat-message",{name:username,message:msg});
 }
 
-function joinRoom(){
-  socket.emit("join-room", document.getElementById("roomInput").value);
-}
+socket.on("chat-message",(d)=>{
+  const el=document.createElement("div");
+  el.className="msg";
+  el.innerHTML="<b>"+d.name+":</b> "+d.message;
+  document.getElementById("messages").appendChild(el);
+});
+
 </script>
 
 </body>
