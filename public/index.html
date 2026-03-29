@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MultPlayer</title>
+
+<style>
+body {
+  background:#0b0b0f;
+  color:#fff;
+  font-family:Arial;
+}
+.top {
+  display:flex;
+  gap:5px;
+  padding:10px;
+}
+input,button {
+  padding:10px;
+  border:none;
+  border-radius:8px;
+}
+#player {
+  width:100%;
+  aspect-ratio:16/9;
+}
+.msg {
+  background:#1a1a24;
+  margin:5px;
+  padding:5px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="top">
+  <button onclick="createRoom()">Criar</button>
+  <input id="roomInput" placeholder="Sala">
+  <button onclick="joinRoom()">Entrar</button>
+</div>
+
+<div class="top">
+  <input id="ytLink" placeholder="Link YouTube">
+  <button onclick="loadMedia()">▶</button>
+</div>
+
+<div id="player"></div>
+
+<div class="top">
+  <button onclick="play()">▶</button>
+  <button onclick="pause()">⏸</button>
+</div>
+
+<h3>Chat</h3>
+<div id="messages"></div>
+
+<div class="top">
+  <input id="msgInput">
+  <button onclick="sendMsg()">Enviar</button>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+const socket = io();
+
+// DEBUG
+socket.on("connect", () => {
+  console.log("Conectado:", socket.id);
+});
+
+// PLAYER
+let player = null;
+let ready = false;
+let block = false;
+
+// YOUTUBE
+window.onYouTubeIframeAPIReady = function(){
+  player = new YT.Player("player", {
+    events: {
+      onReady: () => {
+        ready = true;
+        console.log("Player pronto");
+      },
+      onStateChange: onStateChange
+    }
+  });
+};
+
+function onStateChange(e){
+  if(block || !ready) return;
+
+  if(e.data === YT.PlayerState.ENDED){
+    socket.emit("next");
+  }
+}
+
+// PARSE LINK
+function parseYouTube(url){
+  try{
+    const u = new URL(url);
+
+    if(u.hostname.includes("youtu.be")){
+      return { id: u.pathname.slice(1) };
+    }
+
+    const v = u.searchParams.get("v");
+    if(v){
+      return { id: v };
+    }
+  }catch{}
+
+  return null;
+}
+
+// LOAD
+function loadMedia(){
+  const d = parseYouTube(ytLink.value);
+
+  if(!d){
+    alert("Link inválido");
+    return;
+  }
+
+  socket.emit("load", d);
+}
+
+// PLAY
+function play(){
+  if(!ready) return alert("Player não pronto");
+  socket.emit("play", player.getCurrentTime());
+}
+
+// PAUSE
+function pause(){
+  if(!ready) return alert("Player não pronto");
+  socket.emit("pause", player.getCurrentTime());
+}
+
+// SOCKET EVENTS
+socket.on("load",(s)=>{
+  if(!ready) return;
+
+  block = true;
+  player.loadVideoById(s.id);
+  setTimeout(()=>block=false,500);
+});
+
+socket.on("play",(t)=>{
+  if(!ready) return;
+
+  block = true;
+  player.seekTo(t,true);
+  player.playVideo();
+  setTimeout(()=>block=false,300);
+});
+
+socket.on("pause",(t)=>{
+  if(!ready) return;
+
+  block = true;
+  player.seekTo(t,true);
+  player.pauseVideo();
+  setTimeout(()=>block=false,300);
+});
+
+socket.on("seek",(t)=>{
+  if(!ready) return;
+
+  block = true;
+  player.seekTo(t,true);
+  setTimeout(()=>block=false,200);
+});
+
+// CHAT
+function sendMsg(){
+  if(!msgInput.value) return;
+
+  socket.emit("chat-message", {
+    name: "User",
+    message: msgInput.value
+  });
+
+  msgInput.value = "";
+}
+
+socket.on("chat-message",(d)=>{
+  const el = document.createElement("div");
+  el.className = "msg";
+  el.innerHTML = "<b>"+d.name+":</b> "+d.message;
+  messages.appendChild(el);
+});
+
+// ROOMS
+function createRoom(){
+  socket.emit("create-room");
+}
+
+socket.on("room-created",(id)=>{
+  roomInput.value = id;
+  joinRoom();
+});
+
+function joinRoom(){
+  socket.emit("join-room", roomInput.value);
+}
+</script>
+
+</body>
+</html>
