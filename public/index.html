@@ -155,7 +155,17 @@ function nextPlaylist(){ socket.emit("playlist-next"); }
 function prevPlaylist(){ socket.emit("playlist-prev"); }
 
 function play(){
-  if(player) socket.emit("play",player.getCurrentTime());
+  if(!player) return;
+
+  const videoUrl = document.getElementById("ytLink").value;
+
+  // 🔥 chama Android com áudio real
+  if(window.Android){
+    const audioUrl = "https://multiplayerapp.onrender.com/audio?url=" + encodeURIComponent(videoUrl);
+    Android.playAudio(audioUrl);
+  }
+
+  player.playVideo();
 }
 
 function pause(){
