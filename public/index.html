@@ -3,57 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MultPlayer</title>
+<title>Sync App</title>
 
 <style>
-body {
-  background:#0b0b0f;
-  color:#fff;
-  font-family:Arial;
-}
-.top {
-  display:flex;
-  gap:5px;
-  padding:10px;
-}
-input,button {
-  padding:10px;
-  border:none;
-  border-radius:8px;
-}
-#player {
-  width:100%;
-  aspect-ratio:16/9;
-}
-.msg {
+body { margin:0; background:#0b0b0f; color:#fff; font-family:Arial; }
+.top { padding:10px; background:#12121a; display:flex; gap:5px; flex-wrap:wrap; }
+input { flex:1; padding:10px; border:none; border-radius:6px; }
+button { padding:10px; border:none; background:#5865f2; color:#fff; border-radius:6px; cursor:pointer; }
+#player { width:100%; aspect-ratio:16/9; }
+
+.queue-item {
   background:#1a1a24;
   margin:5px;
-  padding:5px;
+  padding:8px;
+  border-radius:6px;
+  display:flex;
+  justify-content:space-between;
+  cursor:pointer;
 }
+
+.msg { background:#1a1a24; padding:5px; margin:5px 0; border-radius:5px; }
 </style>
 </head>
 
 <body>
 
 <div class="top">
-  <button onclick="createRoom()">Criar</button>
-  <input id="roomInput" placeholder="Sala">
+  <button onclick="createRoom()">Criar Sala</button>
+  <input id="roomInput" placeholder="Código da sala">
   <button onclick="joinRoom()">Entrar</button>
 </div>
 
 <div class="top">
   <input id="ytLink" placeholder="Link YouTube">
   <button onclick="loadMedia()">▶</button>
+  <button onclick="addQueue()">➕ Fila</button>
 </div>
 
 <div id="player"></div>
 
 <div class="top">
+  <button onclick="prevPlaylist()">⏮</button>
   <button onclick="play()">▶</button>
   <button onclick="pause()">⏸</button>
+  <button onclick="nextPlaylist()">⏭</button>
+  <button onclick="nextQueue()">⏭ Fila</button>
 </div>
 
+<h3>Fila</h3>
+<div id="queue"></div>
+
 <h3>Chat</h3>
+
+<div class="top">
+  <span id="userDisplay"></span>
+  <button onclick="changeName()">Trocar Nome</button>
+</div>
+
 <div id="messages"></div>
 
 <div class="top">
@@ -61,152 +67,159 @@ input,button {
   <button onclick="sendMsg()">Enviar</button>
 </div>
 
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
 const socket = io();
 
-// DEBUG
-socket.on("connect", () => {
-  console.log("Conectado:", socket.id);
-});
+/* USER */
+let username = localStorage.getItem("username") || "User"+Math.floor(Math.random()*9999);
+userDisplay.innerText="👤 "+username;
 
-// PLAYER
-let player = null;
-let ready = false;
-let block = false;
+function changeName(){
+  const n=prompt("Novo nome:");
+  if(!n) return;
+  username=n;
+  localStorage.setItem("username",username);
+  userDisplay.innerText="👤 "+username;
+}
 
-// YOUTUBE
-window.onYouTubeIframeAPIReady = function(){
-  player = new YT.Player("player", {
-    events: {
-      onReady: () => {
-        ready = true;
-        console.log("Player pronto");
-      },
-      onStateChange: onStateChange
+/* PLAYER */
+let player, block=false, lastTime=0;
+
+function onYouTubeIframeAPIReady(){
+  player=new YT.Player("player",{events:{onStateChange:onStateChange}});
+
+  setInterval(()=>{
+    if(!player||block) return;
+    const t=player.getCurrentTime();
+    if(Math.abs(t-lastTime)>1.5){
+      socket.emit("seek",t);
     }
-  });
-};
+    lastTime=t;
+  },500);
+}
 
 function onStateChange(e){
-  if(block || !ready) return;
-
-  if(e.data === YT.PlayerState.ENDED){
+  if(block) return;
+  if(e.data===YT.PlayerState.ENDED){
     socket.emit("next");
   }
 }
 
-// PARSE LINK
+/* PARSE */
 function parseYouTube(url){
   try{
-    const u = new URL(url);
+    const u=new URL(url);
+    const list=u.searchParams.get("list");
+    const index=u.searchParams.get("index");
+    const v=u.searchParams.get("v");
 
-    if(u.hostname.includes("youtu.be")){
-      return { id: u.pathname.slice(1) };
-    }
-
-    const v = u.searchParams.get("v");
-    if(v){
-      return { id: v };
-    }
-  }catch{}
-
+    if(list) return {type:"playlist",id:list,index:index?parseInt(index):0};
+    if(u.hostname.includes("youtu.be")) return {type:"video",id:u.pathname.slice(1)};
+    if(v) return {type:"video",id:v};
+  }catch(e){}
   return null;
 }
 
-// LOAD
+/* CONTROLES */
 function loadMedia(){
-  const d = parseYouTube(ytLink.value);
-
-  if(!d){
-    alert("Link inválido");
-    return;
-  }
-
-  socket.emit("load", d);
+  const d=parseYouTube(ytLink.value);
+  if(!d) return alert("Link inválido");
+  socket.emit("load",d);
 }
 
-// PLAY
-function play(){
-  if(!ready) return alert("Player não pronto");
-  socket.emit("play", player.getCurrentTime());
+function addQueue(){
+  const d=parseYouTube(ytLink.value);
+  if(d && d.type==="video") socket.emit("add-queue",d);
 }
 
-// PAUSE
-function pause(){
-  if(!ready) return alert("Player não pronto");
-  socket.emit("pause", player.getCurrentTime());
-}
+function nextQueue(){ socket.emit("next"); }
+function nextPlaylist(){ socket.emit("playlist-next"); }
+function prevPlaylist(){ socket.emit("playlist-prev"); }
+function play(){ socket.emit("play",player.getCurrentTime()); }
+function pause(){ socket.emit("pause",player.getCurrentTime()); }
 
-// SOCKET EVENTS
+/* SOCKET */
 socket.on("load",(s)=>{
-  if(!ready) return;
-
-  block = true;
-  player.loadVideoById(s.id);
+  block=true;
+  if(s.type==="playlist"){
+    player.loadPlaylist({list:s.id,index:s.index||0});
+  }else{
+    player.loadVideoById(s.id);
+  }
   setTimeout(()=>block=false,500);
 });
 
-socket.on("play",(t)=>{
-  if(!ready) return;
+socket.on("playlist-next",()=>player.nextVideo());
+socket.on("playlist-prev",()=>player.previousVideo());
 
-  block = true;
+socket.on("play",(t)=>{
+  block=true;
   player.seekTo(t,true);
   player.playVideo();
   setTimeout(()=>block=false,300);
 });
 
 socket.on("pause",(t)=>{
-  if(!ready) return;
-
-  block = true;
+  block=true;
   player.seekTo(t,true);
   player.pauseVideo();
   setTimeout(()=>block=false,300);
 });
 
 socket.on("seek",(t)=>{
-  if(!ready) return;
-
-  block = true;
+  block=true;
   player.seekTo(t,true);
   setTimeout(()=>block=false,200);
 });
 
-// CHAT
+/* FILA */
+socket.on("queue",(q)=>{
+  queue.innerHTML="";
+  q.forEach((v,i)=>{
+    const el=document.createElement("div");
+    el.className="queue-item";
+
+    el.innerHTML=`
+      <span onclick="playFromQueue(${i})">${v.id}</span>
+      <button onclick="removeQueue(${i})">❌</button>
+    `;
+
+    queue.appendChild(el);
+  });
+});
+
+function playFromQueue(i){
+  socket.emit("play-from-queue",i);
+}
+
+function removeQueue(i){
+  socket.emit("remove-queue",i);
+}
+
+/* CHAT */
 function sendMsg(){
   if(!msgInput.value) return;
-
-  socket.emit("chat-message", {
-    name: "User",
-    message: msgInput.value
-  });
-
-  msgInput.value = "";
+  socket.emit("chat-message",{name:username,message:msgInput.value});
+  msgInput.value="";
 }
 
 socket.on("chat-message",(d)=>{
-  const el = document.createElement("div");
-  el.className = "msg";
-  el.innerHTML = "<b>"+d.name+":</b> "+d.message;
+  const el=document.createElement("div");
+  el.className="msg";
+  el.innerHTML="<b>"+d.name+":</b> "+d.message;
   messages.appendChild(el);
 });
 
-// ROOMS
-function createRoom(){
-  socket.emit("create-room");
-}
-
+/* ROOMS */
+function createRoom(){ socket.emit("create-room"); }
 socket.on("room-created",(id)=>{
-  roomInput.value = id;
+  roomInput.value=id;
   joinRoom();
 });
-
-function joinRoom(){
-  socket.emit("join-room", roomInput.value);
-}
+function joinRoom(){ socket.emit("join-room",roomInput.value); }
 </script>
 
 </body>
