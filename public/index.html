@@ -11,7 +11,17 @@ body { margin:0; background:#0b0b0f; color:#fff; font-family:Arial; }
 input { flex:1; padding:10px; border:none; border-radius:6px; }
 button { padding:10px; border:none; background:#5865f2; color:#fff; border-radius:6px; cursor:pointer; }
 #player { width:100%; aspect-ratio:16/9; }
-.queue-item { background:#1a1a24; margin:5px; padding:8px; border-radius:6px; display:flex; justify-content:space-between; }
+
+.queue-item {
+  background:#1a1a24;
+  margin:5px;
+  padding:8px;
+  border-radius:6px;
+  display:flex;
+  justify-content:space-between;
+  cursor:pointer;
+}
+
 .msg { background:#1a1a24; padding:5px; margin:5px 0; border-radius:5px; }
 </style>
 </head>
@@ -61,11 +71,9 @@ button { padding:10px; border:none; background:#5865f2; color:#fff; border-radiu
 <script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
-
-// SOCKET
 const socket = io("https://multiplayerapp.onrender.com");
 
-// USER
+/* USER */
 let username = localStorage.getItem("username") || "User"+Math.floor(Math.random()*9999);
 document.getElementById("userDisplay").innerText="👤 "+username;
 
@@ -77,51 +85,88 @@ function changeName(){
   document.getElementById("userDisplay").innerText="👤 "+username;
 }
 
-// PLAYER
-let player;
+/* PLAYER */
+let player, block=false, lastTime=0;
 
 function onYouTubeIframeAPIReady(){
-  player=new YT.Player("player",{height:"100%",width:"100%"});
+  player=new YT.Player("player",{
+    height:"100%",
+    width:"100%",
+    events:{onStateChange:onStateChange}
+  });
+
+  setInterval(()=>{
+    if(!player || block || !player.getCurrentTime) return;
+    const t=player.getCurrentTime();
+    if(Math.abs(t-lastTime)>1.5){
+      socket.emit("seek",t);
+    }
+    lastTime=t;
+  },500);
 }
 
-// CONTROLES
+function onStateChange(e){
+  if(block) return;
+  if(e.data===YT.PlayerState.ENDED){
+    socket.emit("next");
+  }
+}
+
+/* CONTROLES */
 function loadMedia(){
   const url=document.getElementById("ytLink").value;
-  socket.emit("load",url);
+  if(!url) return alert("Coloque um link");
+  socket.emit("load",{type:"video",id:url.split("v=")[1]});
 }
 
-function play(){
-  socket.emit("play");
+function addQueue(){
+  const url=document.getElementById("ytLink").value;
+  socket.emit("add-queue",{type:"video",id:url.split("v=")[1]});
+}
 
-  if(window.Android){
-    Android.playAudio("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
+function nextQueue(){ socket.emit("next"); }
+function nextPlaylist(){ socket.emit("playlist-next"); }
+function prevPlaylist(){ socket.emit("playlist-prev"); }
+
+function play(){
+  if(player){
+    socket.emit("play",player.getCurrentTime());
   }
 }
 
 function pause(){
-  socket.emit("pause");
-
-  if(window.Android){
-    Android.pauseAudio();
+  if(player){
+    socket.emit("pause",player.getCurrentTime());
   }
 }
 
-// SOCKET
-socket.on("load",(url)=>{
-  if(player) player.loadVideoByUrl(url);
+/* SOCKET */
+socket.on("load",(s)=>{
+  if(!player) return;
+  player.loadVideoById(s.id);
 });
 
-socket.on("play",()=> player && player.playVideo());
-socket.on("pause",()=> player && player.pauseVideo());
+socket.on("play",(t)=>{
+  player.seekTo(t,true);
+  player.playVideo();
+});
 
-// ROOM
-function createRoom(){ socket.emit("create-room"); }
-function joinRoom(){ socket.emit("join-room",document.getElementById("roomInput").value); }
+socket.on("pause",(t)=>{
+  player.seekTo(t,true);
+  player.pauseVideo();
+});
 
-// CHAT
+socket.on("seek",(t)=>{
+  player.seekTo(t,true);
+});
+
+/* CHAT */
 function sendMsg(){
-  const msg=document.getElementById("msgInput").value;
-  socket.emit("chat-message",{name:username,message:msg});
+  const input=document.getElementById("msgInput");
+  if(!input.value) return;
+
+  socket.emit("chat-message",{name:username,message:input.value});
+  input.value="";
 }
 
 socket.on("chat-message",(d)=>{
@@ -131,6 +176,17 @@ socket.on("chat-message",(d)=>{
   document.getElementById("messages").appendChild(el);
 });
 
+/* ROOMS */
+function createRoom(){ socket.emit("create-room"); }
+
+socket.on("room-created",(id)=>{
+  document.getElementById("roomInput").value=id;
+  joinRoom();
+});
+
+function joinRoom(){
+  socket.emit("join-room",document.getElementById("roomInput").value);
+}
 </script>
 
 </body>
