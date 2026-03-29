@@ -72,37 +72,16 @@ button { padding:10px; border:none; background:#5865f2; color:#fff; border-radiu
 <script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
-const socket = io("https://multiplayerapp.onrender.com");
 
-/* USER */
-let username = localStorage.getItem("username") || "User"+Math.floor(Math.random()*9999);
-document.getElementById("userDisplay").innerText="👤 "+username;
+// 🔥 TODAS SUAS FUNÇÕES JÁ EXISTEM ACIMA...
 
-/* PLAYER */
-let player, block=false, lastTime=0;
-
-function onYouTubeIframeAPIReady(){
-  player=new YT.Player("player",{
-    height:"100%",
-    width:"100%",
-    events:{onStateChange:onStateChange}
-  });
-}
-
-function onStateChange(e){
-  if(block) return;
-  if(e.data===YT.PlayerState.ENDED){
-    socket.emit("next");
-  }
-}
-
-/* CONTROLES COM ANDROID */
+// 🔥 CORRIGIDO (AGORA DENTRO DO SCRIPT)
 function play(){
   if(player){
     socket.emit("play",player.getCurrentTime());
   }
 
-  // 🔥 ANDROID BACKGROUND AUDIO
+  // ANDROID AUDIO BACKGROUND
   if(window.Android){
     const audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
     Android.playAudio(audioUrl);
@@ -119,11 +98,9 @@ function pause(){
   }
 }
 
-/* OUTROS CONTROLES */
-function nextQueue(){ socket.emit("next"); }
-function nextPlaylist(){ socket.emit("playlist-next"); }
-function prevPlaylist(){ socket.emit("playlist-prev"); }
 </script>
+</body>
+</html>
 
 </body>
 </html>
