@@ -19,7 +19,6 @@ button { padding:10px; border:none; background:#5865f2; color:#fff; border-radiu
   border-radius:6px;
   display:flex;
   justify-content:space-between;
-  cursor:pointer;
 }
 
 .msg { background:#1a1a24; padding:5px; margin:5px 0; border-radius:5px; }
@@ -112,16 +111,43 @@ function onStateChange(e){
   }
 }
 
+/* PARSER */
+function parseYouTube(url){
+  try{
+    const u=new URL(url);
+
+    const list=u.searchParams.get("list");
+    const index=u.searchParams.get("index");
+    const v=u.searchParams.get("v");
+
+    if(list){
+      return {type:"playlist",id:list,index:index?parseInt(index):0};
+    }
+
+    if(u.hostname.includes("youtu.be")){
+      return {type:"video",id:u.pathname.slice(1)};
+    }
+
+    if(v){
+      return {type:"video",id:v};
+    }
+
+  }catch(e){}
+  return null;
+}
+
 /* CONTROLES */
 function loadMedia(){
-  const url=document.getElementById("ytLink").value;
-  if(!url) return alert("Coloque um link");
-  socket.emit("load",{type:"video",id:url.split("v=")[1]});
+  const d=parseYouTube(document.getElementById("ytLink").value);
+  if(!d) return alert("Link inválido");
+  socket.emit("load",d);
 }
 
 function addQueue(){
-  const url=document.getElementById("ytLink").value;
-  socket.emit("add-queue",{type:"video",id:url.split("v=")[1]});
+  const d=parseYouTube(document.getElementById("ytLink").value);
+  if(d && d.type==="video"){
+    socket.emit("add-queue",d);
+  }
 }
 
 function nextQueue(){ socket.emit("next"); }
@@ -129,22 +155,26 @@ function nextPlaylist(){ socket.emit("playlist-next"); }
 function prevPlaylist(){ socket.emit("playlist-prev"); }
 
 function play(){
-  if(player){
-    socket.emit("play",player.getCurrentTime());
-  }
+  if(player) socket.emit("play",player.getCurrentTime());
 }
 
 function pause(){
-  if(player){
-    socket.emit("pause",player.getCurrentTime());
-  }
+  if(player) socket.emit("pause",player.getCurrentTime());
 }
 
 /* SOCKET */
 socket.on("load",(s)=>{
   if(!player) return;
-  player.loadVideoById(s.id);
+
+  if(s.type==="playlist"){
+    player.loadPlaylist({list:s.id,index:s.index||0});
+  }else{
+    player.loadVideoById(s.id);
+  }
 });
+
+socket.on("playlist-next",()=>player && player.nextVideo());
+socket.on("playlist-prev",()=>player && player.previousVideo());
 
 socket.on("play",(t)=>{
   player.seekTo(t,true);
@@ -159,6 +189,32 @@ socket.on("pause",(t)=>{
 socket.on("seek",(t)=>{
   player.seekTo(t,true);
 });
+
+/* FILA */
+const queueDiv = document.getElementById("queue");
+
+socket.on("queue",(q)=>{
+  queueDiv.innerHTML="";
+  q.forEach((v,i)=>{
+    const el=document.createElement("div");
+    el.className="queue-item";
+
+    el.innerHTML=`
+      <span onclick="playFromQueue(${i})">${v.id}</span>
+      <button onclick="removeQueue(${i})">❌</button>
+    `;
+
+    queueDiv.appendChild(el);
+  });
+});
+
+function playFromQueue(i){
+  socket.emit("play-from-queue",i);
+}
+
+function removeQueue(i){
+  socket.emit("remove-queue",i);
+}
 
 /* CHAT */
 function sendMsg(){
