@@ -25,7 +25,7 @@ button { padding:10px; border:none; background:#5865f2; color:#fff; border-radiu
 .msg { background:#1a1a24; padding:5px; margin:5px 0; border-radius:5px; }
 </style>
 </head>
-<link rel="manifest" href="manifest.json">
+
 <body>
 
 <div class="top">
@@ -67,14 +67,17 @@ button { padding:10px; border:none; background:#5865f2; color:#fff; border-radiu
   <button onclick="sendMsg()">Enviar</button>
 </div>
 
-<script src="/socket.io/socket.io.js"></script>
+<!-- libs -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
-const socket = io();
+/* 🔥 SOCKET (ANTES DE TUDO) */
+const socket = io("https://multiplayerapp.onrender.com");
 
 /* USER */
 let username = localStorage.getItem("username") || "User"+Math.floor(Math.random()*9999);
+const userDisplay = document.getElementById("userDisplay");
 userDisplay.innerText="👤 "+username;
 
 function changeName(){
@@ -89,10 +92,14 @@ function changeName(){
 let player, block=false, lastTime=0;
 
 function onYouTubeIframeAPIReady(){
-  player=new YT.Player("player",{events:{onStateChange:onStateChange}});
+  player=new YT.Player("player",{
+    height:"100%",
+    width:"100%",
+    events:{onStateChange:onStateChange}
+  });
 
   setInterval(()=>{
-    if(!player||block) return;
+    if(!player || block || !player.getCurrentTime) return;
     const t=player.getCurrentTime();
     if(Math.abs(t-lastTime)>1.5){
       socket.emit("seek",t);
@@ -125,37 +132,48 @@ function parseYouTube(url){
 
 /* CONTROLES */
 function loadMedia(){
-  const d=parseYouTube(ytLink.value);
+  const d=parseYouTube(document.getElementById("ytLink").value);
   if(!d) return alert("Link inválido");
   socket.emit("load",d);
 }
 
 function addQueue(){
-  const d=parseYouTube(ytLink.value);
+  const d=parseYouTube(document.getElementById("ytLink").value);
   if(d && d.type==="video") socket.emit("add-queue",d);
 }
 
 function nextQueue(){ socket.emit("next"); }
 function nextPlaylist(){ socket.emit("playlist-next"); }
 function prevPlaylist(){ socket.emit("playlist-prev"); }
-function play(){ socket.emit("play",player.getCurrentTime()); }
-function pause(){ socket.emit("pause",player.getCurrentTime()); }
 
-/* SOCKET */
+function play(){
+  if(player) socket.emit("play",player.getCurrentTime());
+}
+
+function pause(){
+  if(player) socket.emit("pause",player.getCurrentTime());
+}
+
+/* SOCKET EVENTS */
 socket.on("load",(s)=>{
+  if(!player) return;
+
   block=true;
+
   if(s.type==="playlist"){
     player.loadPlaylist({list:s.id,index:s.index||0});
   }else{
     player.loadVideoById(s.id);
   }
+
   setTimeout(()=>block=false,500);
 });
 
-socket.on("playlist-next",()=>player.nextVideo());
-socket.on("playlist-prev",()=>player.previousVideo());
+socket.on("playlist-next",()=>player && player.nextVideo());
+socket.on("playlist-prev",()=>player && player.previousVideo());
 
 socket.on("play",(t)=>{
+  if(!player) return;
   block=true;
   player.seekTo(t,true);
   player.playVideo();
@@ -163,6 +181,7 @@ socket.on("play",(t)=>{
 });
 
 socket.on("pause",(t)=>{
+  if(!player) return;
   block=true;
   player.seekTo(t,true);
   player.pauseVideo();
@@ -170,14 +189,17 @@ socket.on("pause",(t)=>{
 });
 
 socket.on("seek",(t)=>{
+  if(!player) return;
   block=true;
   player.seekTo(t,true);
   setTimeout(()=>block=false,200);
 });
 
 /* FILA */
+const queueDiv = document.getElementById("queue");
+
 socket.on("queue",(q)=>{
-  queue.innerHTML="";
+  queueDiv.innerHTML="";
   q.forEach((v,i)=>{
     const el=document.createElement("div");
     el.className="queue-item";
@@ -187,7 +209,7 @@ socket.on("queue",(q)=>{
       <button onclick="removeQueue(${i})">❌</button>
     `;
 
-    queue.appendChild(el);
+    queueDiv.appendChild(el);
   });
 });
 
@@ -200,6 +222,9 @@ function removeQueue(i){
 }
 
 /* CHAT */
+const messages = document.getElementById("messages");
+const msgInput = document.getElementById("msgInput");
+
 function sendMsg(){
   if(!msgInput.value) return;
   socket.emit("chat-message",{name:username,message:msgInput.value});
@@ -215,11 +240,15 @@ socket.on("chat-message",(d)=>{
 
 /* ROOMS */
 function createRoom(){ socket.emit("create-room"); }
+
 socket.on("room-created",(id)=>{
-  roomInput.value=id;
+  document.getElementById("roomInput").value=id;
   joinRoom();
 });
-function joinRoom(){ socket.emit("join-room",roomInput.value); }
+
+function joinRoom(){
+  socket.emit("join-room",document.getElementById("roomInput").value);
+}
 </script>
 
 </body>
