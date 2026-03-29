@@ -4,7 +4,11 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*"
+  }
+});
 
 app.use(express.static("public"));
 
@@ -34,6 +38,7 @@ io.on("connection", (socket) => {
     socket.join(roomId);
 
     socket.emit("sync", rooms[roomId]);
+    io.to(roomId).emit("queue", rooms[roomId].queue);
   });
 
   socket.on("create-room", () => {
@@ -70,7 +75,6 @@ io.on("connection", (socket) => {
     io.to(currentRoom).emit("queue", rooms[currentRoom].queue);
   });
 
-  // 🔥 PULAR FILA (MANUAL OU AUTO)
   socket.on("next", () => {
     if (!currentRoom) return;
 
@@ -92,7 +96,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 🔥 TOCAR ITEM ESPECÍFICO DA FILA
   socket.on("play-from-queue", (i) => {
     if (!currentRoom) return;
 
@@ -114,7 +117,6 @@ io.on("connection", (socket) => {
     io.to(currentRoom).emit("queue", rooms[currentRoom].queue);
   });
 
-  // 🔥 REMOVER DA FILA
   socket.on("remove-queue", (i) => {
     if (!currentRoom) return;
 
@@ -124,13 +126,11 @@ io.on("connection", (socket) => {
 
   socket.on("play", (time) => {
     if (!currentRoom) return;
-    rooms[currentRoom].isPlaying = true;
     io.to(currentRoom).emit("play", time);
   });
 
   socket.on("pause", (time) => {
     if (!currentRoom) return;
-    rooms[currentRoom].isPlaying = false;
     io.to(currentRoom).emit("pause", time);
   });
 
@@ -147,5 +147,5 @@ io.on("connection", (socket) => {
 });
 
 server.listen(3000, () => {
-  console.log("🔥 http://localhost:3000");
+  console.log("🔥 Servidor rodando na porta 3000");
 });
