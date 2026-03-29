@@ -1,11 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sync App</title>
+
+<style>
+body { margin:0; background:#0b0b0f; color:#fff; font-family:Arial; }
+.top { padding:10px; background:#12121a; display:flex; gap:5px; flex-wrap:wrap; }
+input { flex:1; padding:10px; border:none; border-radius:6px; }
+button { padding:10px; border:none; background:#5865f2; color:#fff; border-radius:6px; cursor:pointer; }
+#player { width:100%; aspect-ratio:16/9; }
+
+.queue-item {
+  background:#1a1a24;
+  margin:5px;
+  padding:8px;
+  border-radius:6px;
+  display:flex;
+  justify-content:space-between;
+  cursor:pointer;
+}
+
+.msg { background:#1a1a24; padding:5px; margin:5px 0; border-radius:5px; }
+</style>
+</head>
+
+<body>
+
+<div class="top">
+  <button onclick="createRoom()">Criar Sala</button>
+  <input id="roomInput" placeholder="Código da sala">
+  <button onclick="joinRoom()">Entrar</button>
+</div>
+
+<div class="top">
+  <input id="ytLink" placeholder="Link YouTube">
+  <button onclick="loadMedia()">▶</button>
+  <button onclick="addQueue()">➕ Fila</button>
+</div>
+
+<div id="player"></div>
+
+<div class="top">
+  <button onclick="prevPlaylist()">⏮</button>
+  <button onclick="play()">▶</button>
+  <button onclick="pause()">⏸</button>
+  <button onclick="nextPlaylist()">⏭</button>
+  <button onclick="nextQueue()">⏭ Fila</button>
+</div>
+
+<h3>Fila</h3>
+<div id="queue"></div>
+
+<h3>Chat</h3>
+
+<div class="top">
+  <span id="userDisplay"></span>
+  <button onclick="changeName()">Trocar Nome</button>
+</div>
+
+<div id="messages"></div>
+
+<div class="top">
+  <input id="msgInput">
+  <button onclick="sendMsg()">Enviar</button>
+</div>
+
+<!-- libs -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+const socket = io("https://multiplayerapp.onrender.com");
+
+/* USER */
+let username = localStorage.getItem("username") || "User"+Math.floor(Math.random()*9999);
+document.getElementById("userDisplay").innerText="👤 "+username;
+
+/* PLAYER */
+let player, block=false, lastTime=0;
+
+function onYouTubeIframeAPIReady(){
+  player=new YT.Player("player",{
+    height:"100%",
+    width:"100%",
+    events:{onStateChange:onStateChange}
+  });
+}
+
+function onStateChange(e){
+  if(block) return;
+  if(e.data===YT.PlayerState.ENDED){
+    socket.emit("next");
+  }
+}
+
+/* CONTROLES COM ANDROID */
 function play(){
   if(player){
     socket.emit("play",player.getCurrentTime());
   }
 
-  // 🔥 CHAMA ANDROID (AQUI VOCÊ PRECISA DE UM LINK DE ÁUDIO REAL)
+  // 🔥 ANDROID BACKGROUND AUDIO
   if(window.Android){
-    const audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"; // TESTE
+    const audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
     Android.playAudio(audioUrl);
   }
 }
@@ -19,3 +118,12 @@ function pause(){
     Android.pauseAudio();
   }
 }
+
+/* OUTROS CONTROLES */
+function nextQueue(){ socket.emit("next"); }
+function nextPlaylist(){ socket.emit("playlist-next"); }
+function prevPlaylist(){ socket.emit("playlist-prev"); }
+</script>
+
+</body>
+</html>
