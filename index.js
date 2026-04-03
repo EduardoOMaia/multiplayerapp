@@ -6,85 +6,110 @@ const cors = require("cors");
 const app = express();
 const server = http.createServer(app);
 
-// 🔥 PORTA CORRETA PARA RENDER
 const PORT = process.env.PORT || 3000;
 
-// 🔥 CORS
 app.use(cors());
 app.use(express.json());
-
-// 🔥 SERVIR FRONTEND (IMPORTANTE)
 app.use(express.static("public"));
 
-// 🔥 SOCKET.IO
 const io = new Server(server, {
-  cors: {
-    origin: "*"
-  }
+  cors: { origin: "*" }
 });
 
-// 🔥 ESTADO DAS SALAS
 let rooms = {};
 
-// 🔥 SOCKET PRINCIPAL
+function createRoom() {
+  return Math.random().toString(36).substring(2, 7);
+}
+
 io.on("connection", (socket) => {
 
   let currentRoom = null;
 
-  // ENTRAR NA SALA
-  socket.on("join", (roomId) => {
-    currentRoom = roomId;
-    socket.join(roomId);
+  socket.on("create-room", () => {
+    const id = createRoom();
+    socket.emit("room-created", id);
+  });
+
+  socket.on("join-room", (roomId) => {
 
     if (!rooms[roomId]) {
       rooms[roomId] = {
-        url: "",
+        type: "video",
+        id: null,
+        queue: [],
         isPlaying: false,
         time: 0
       };
     }
 
+    currentRoom = roomId;
+    socket.join(roomId);
+
     socket.emit("sync", rooms[roomId]);
   });
 
-  // CARREGAR MÍDIA
-  socket.on("load", (url) => {
+  socket.on("load", (data) => {
     if (!currentRoom) return;
 
-    rooms[currentRoom].url = url;
-    rooms[currentRoom].time = 0;
+    rooms[currentRoom] = {
+      ...rooms[currentRoom],
+      ...data,
+      time: 0
+    };
 
-    io.to(currentRoom).emit("load", url);
+    io.to(currentRoom).emit("load", rooms[currentRoom]);
   });
 
-  // PLAY
   socket.on("play", (time) => {
     if (!currentRoom) return;
-
     rooms[currentRoom].isPlaying = true;
-    rooms[currentRoom].time = time;
-
-    socket.to(currentRoom).emit("play", time);
+    io.to(currentRoom).emit("play", time);
   });
 
-  // PAUSE
   socket.on("pause", (time) => {
     if (!currentRoom) return;
-
     rooms[currentRoom].isPlaying = false;
-    rooms[currentRoom].time = time;
-
-    socket.to(currentRoom).emit("pause", time);
+    io.to(currentRoom).emit("pause", time);
   });
 
-  // DESCONECTAR
-  socket.on("disconnect", () => {
-    // opcional: limpar sala depois
+  socket.on("seek", (time) => {
+    if (!currentRoom) return;
+    socket.to(currentRoom).emit("seek", time);
+  });
+
+  socket.on("add-queue", (video) => {
+    if (!currentRoom) return;
+    rooms[currentRoom].queue.push(video);
+    io.to(currentRoom).emit("queue", rooms[currentRoom].queue);
+  });
+
+  socket.on("next", () => {
+    if (!currentRoom) return;
+
+    const room = rooms[currentRoom];
+
+    if (room.queue.length > 0) {
+      const next = room.queue.shift();
+
+      rooms[currentRoom] = {
+        ...room,
+        ...next,
+        time: 0
+      };
+
+      io.to(currentRoom).emit("load", rooms[currentRoom]);
+      io.to(currentRoom).emit("queue", rooms[currentRoom].queue);
+    }
+  });
+
+  socket.on("chat-message", (msg) => {
+    if (!currentRoom) return;
+    io.to(currentRoom).emit("chat-message", msg);
   });
 
 });
 
-// 🔥 START SERVER
 server.listen(PORT, () => {
-  console.log("🔥 Servidor rodando na porta", PORT);
+  console.log("🔥 Rodando na porta", PORT);
 });
