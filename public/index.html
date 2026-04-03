@@ -2,63 +2,66 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="https://www.youtube.com/iframe_api"></script>
+<title>MultPlayer</title>
 </head>
-
 <body>
 
-<input id="ytLink">
-<button onclick="loadMedia()">Carregar</button>
+<h2>MultPlayer</h2>
+
+<input id="room" placeholder="Sala">
+<button onclick="join()">Entrar</button>
+
+<br><br>
+
+<input id="url" placeholder="URL MP3/MP4">
+<button onclick="load()">Carregar</button>
+
+<br><br>
+
 <button onclick="play()">Play</button>
 <button onclick="pause()">Pause</button>
 
-<div id="player"></div>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 
 <script>
-const socket = io("https://SEU_RENDER.onrender.com");
+const socket = io("http://SEU_IP:3000");
 
-let player;
+let currentUrl = "";
 
-function onYouTubeIframeAPIReady(){
-  player = new YT.Player("player");
+function join(){
+  socket.emit("join", document.getElementById("room").value);
 }
 
-function getId(url){
-  const u = new URL(url);
-  return u.searchParams.get("v");
-}
+function load(){
+  const url = document.getElementById("url").value;
+  currentUrl = url;
+  socket.emit("load", url);
 
-function loadMedia(){
-  const id = getId(document.getElementById("ytLink").value);
-  socket.emit("load", {id});
+  Android.play(url);
 }
 
 function play(){
-  const url = document.getElementById("ytLink").value;
-
-  if(window.Android){
-    const audioUrl = "https://SEU_RENDER.onrender.com/audio?url=" + encodeURIComponent(url);
-    Android.playAudio(audioUrl);
-  }
-
-  player.playVideo();
+  socket.emit("play", 0);
+  Android.resume();
 }
 
 function pause(){
-  if(window.Android){
-    Android.pauseAudio();
-  }
-
-  player.pauseVideo();
+  socket.emit("pause", 0);
+  Android.pause();
 }
 
-socket.on("load",(d)=>{
-  player.loadVideoById(d.id);
+/* RECEBENDO EVENTOS */
+socket.on("load", (url)=>{
+  Android.play(url);
 });
 
-socket.on("play",()=>player.playVideo());
-socket.on("pause",()=>player.pauseVideo());
+socket.on("play", ()=>{
+  Android.resume();
+});
+
+socket.on("pause", ()=>{
+  Android.pause();
+});
 </script>
 
 </body>
