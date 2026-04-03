@@ -6,21 +6,34 @@ const cors = require("cors");
 const app = express();
 const server = http.createServer(app);
 
+// 🔥 PORTA CORRETA PARA RENDER
+const PORT = process.env.PORT || 3000;
+
+// 🔥 CORS
 app.use(cors());
 app.use(express.json());
 
+// 🔥 SERVIR FRONTEND (IMPORTANTE)
+app.use(express.static("public"));
+
+// 🔥 SOCKET.IO
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: {
+    origin: "*"
+  }
 });
 
+// 🔥 ESTADO DAS SALAS
 let rooms = {};
 
+// 🔥 SOCKET PRINCIPAL
 io.on("connection", (socket) => {
 
-  let room = null;
+  let currentRoom = null;
 
+  // ENTRAR NA SALA
   socket.on("join", (roomId) => {
-    room = roomId;
+    currentRoom = roomId;
     socket.join(roomId);
 
     if (!rooms[roomId]) {
@@ -34,37 +47,44 @@ io.on("connection", (socket) => {
     socket.emit("sync", rooms[roomId]);
   });
 
-  socket.on("play", (time) => {
-    if (!room) return;
-    rooms[room].isPlaying = true;
-    rooms[room].time = time;
-
-    socket.to(room).emit("play", time);
-  });
-
-  socket.on("pause", (time) => {
-    if (!room) return;
-    rooms[room].isPlaying = false;
-    rooms[room].time = time;
-
-    socket.to(room).emit("pause", time);
-  });
-
+  // CARREGAR MÍDIA
   socket.on("load", (url) => {
-    if (!room) return;
+    if (!currentRoom) return;
 
-    rooms[room].url = url;
-    rooms[room].time = 0;
+    rooms[currentRoom].url = url;
+    rooms[currentRoom].time = 0;
 
-    io.to(room).emit("load", url);
+    io.to(currentRoom).emit("load", url);
+  });
+
+  // PLAY
+  socket.on("play", (time) => {
+    if (!currentRoom) return;
+
+    rooms[currentRoom].isPlaying = true;
+    rooms[currentRoom].time = time;
+
+    socket.to(currentRoom).emit("play", time);
+  });
+
+  // PAUSE
+  socket.on("pause", (time) => {
+    if (!currentRoom) return;
+
+    rooms[currentRoom].isPlaying = false;
+    rooms[currentRoom].time = time;
+
+    socket.to(currentRoom).emit("pause", time);
+  });
+
+  // DESCONECTAR
+  socket.on("disconnect", () => {
+    // opcional: limpar sala depois
   });
 
 });
 
-app.get("/", (req, res) => {
-  res.send("Servidor rodando");
-});
-
-server.listen(3000, () => {
-  console.log("🔥 Servidor rodando na porta 3000");
+// 🔥 START SERVER
+server.listen(PORT, () => {
+  console.log("🔥 Servidor rodando na porta", PORT);
 });
