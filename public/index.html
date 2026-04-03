@@ -1,66 +1,210 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MultPlayer</title>
-</head>
-<body>
 
-<h2>MultPlayer</h2>
-
-<input id="room" placeholder="Sala">
-<button onclick="join()">Entrar</button>
-
-<br><br>
-
-<input id="url" placeholder="URL MP3/MP4">
-<button onclick="load()">Carregar</button>
-
-<br><br>
-
-<button onclick="play()">Play</button>
-<button onclick="pause()">Pause</button>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-
-<script>
-const socket = io("http://SEU_IP:3000");
-
-let currentUrl = "";
-
-function join(){
-  socket.emit("join", document.getElementById("room").value);
+<style>
+body {
+  margin:0;
+  background:#0b0b0f;
+  color:#fff;
+  font-family:Arial;
 }
 
-function load(){
-  const url = document.getElementById("url").value;
-  currentUrl = url;
-  socket.emit("load", url);
+.header {
+  display:flex;
+  gap:10px;
+  padding:10px;
+  background:#111;
+}
 
-  Android.play(url);
+input {
+  flex:1;
+  padding:10px;
+  border-radius:6px;
+  border:none;
+}
+
+button {
+  padding:10px;
+  background:#5865f2;
+  border:none;
+  color:white;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+#player {
+  width:100%;
+  height:300px;
+}
+
+.container {
+  display:flex;
+}
+
+.left, .right {
+  flex:1;
+  padding:10px;
+}
+
+.queue-item {
+  background:#1a1a24;
+  padding:8px;
+  margin:5px 0;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+.chat {
+  height:200px;
+  overflow:auto;
+  background:#111;
+  padding:10px;
+}
+
+.msg {
+  margin:5px 0;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <button onclick="createRoom()">Criar</button>
+  <input id="roomInput" placeholder="Sala">
+  <button onclick="joinRoom()">Entrar</button>
+</div>
+
+<div class="header">
+  <input id="ytLink" placeholder="Link YouTube">
+  <button onclick="loadVideo()">▶</button>
+  <button onclick="addQueue()">+Fila</button>
+</div>
+
+<div id="player"></div>
+
+<div class="header">
+  <button onclick="play()">▶</button>
+  <button onclick="pause()">⏸</button>
+  <button onclick="next()">⏭</button>
+</div>
+
+<div class="container">
+  <div class="left">
+    <h3>Fila</h3>
+    <div id="queue"></div>
+  </div>
+
+  <div class="right">
+    <h3>Chat</h3>
+    <div class="chat" id="chat"></div>
+
+    <input id="msg">
+    <button onclick="sendMsg()">Enviar</button>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+const socket = io();
+
+let player, block=false;
+
+function onYouTubeIframeAPIReady(){
+  player = new YT.Player("player", {
+    events:{ onStateChange:e=>{
+      if(e.data===YT.PlayerState.ENDED){
+        socket.emit("next");
+      }
+    }}
+  });
+}
+
+function parse(url){
+  const u = new URL(url);
+  return {
+    type:"video",
+    id: u.searchParams.get("v")
+  };
+}
+
+function loadVideo(){
+  const d = parse(document.getElementById("ytLink").value);
+  socket.emit("load", d);
+}
+
+function addQueue(){
+  const d = parse(document.getElementById("ytLink").value);
+  socket.emit("add-queue", d);
 }
 
 function play(){
-  socket.emit("play", 0);
-  Android.resume();
+  socket.emit("play", player.getCurrentTime());
 }
 
 function pause(){
-  socket.emit("pause", 0);
-  Android.pause();
+  socket.emit("pause", player.getCurrentTime());
 }
 
-/* RECEBENDO EVENTOS */
-socket.on("load", (url)=>{
-  Android.play(url);
+function next(){
+  socket.emit("next");
+}
+
+socket.on("load",(s)=>{
+  player.loadVideoById(s.id);
 });
 
-socket.on("play", ()=>{
-  Android.resume();
+socket.on("play",(t)=>{
+  player.seekTo(t,true);
+  player.playVideo();
 });
 
-socket.on("pause", ()=>{
-  Android.pause();
+socket.on("pause",(t)=>{
+  player.seekTo(t,true);
+  player.pauseVideo();
+});
+
+socket.on("queue",(q)=>{
+  const div=document.getElementById("queue");
+  div.innerHTML="";
+  q.forEach(v=>{
+    const el=document.createElement("div");
+    el.className="queue-item";
+    el.innerText=v.id;
+    div.appendChild(el);
+  });
+});
+
+function createRoom(){
+  socket.emit("create-room");
+}
+
+socket.on("room-created",(id)=>{
+  document.getElementById("roomInput").value=id;
+  joinRoom();
+});
+
+function joinRoom(){
+  socket.emit("join-room",document.getElementById("roomInput").value);
+}
+
+function sendMsg(){
+  const m=document.getElementById("msg").value;
+  socket.emit("chat-message",m);
+}
+
+socket.on("chat-message",(m)=>{
+  const c=document.getElementById("chat");
+  const el=document.createElement("div");
+  el.className="msg";
+  el.innerText=m;
+  c.appendChild(el);
 });
 </script>
 
